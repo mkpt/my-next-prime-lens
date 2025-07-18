@@ -29,3 +29,6 @@ This tool helps photographers — especially mobile-first shooters — make smar
 git clone https://github.com/mkpt/my-next-prime-lens.git
 cd my-next-prime-lens
 open index.html
+
+# Python 3
+python3 -m http.server
