@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Next Prime Lens</title>
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 2rem;
+      max-width: 750px;
+      margin: auto;
+      line-height: 1.6;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      font-size: 1rem;
+      color: #555;
+      margin-bottom: 1.5rem;
+    }
+
+    .dropzone {
+      border: 3px dashed #aaa;
+      border-radius: 12px;
+      padding: 3rem 1rem;
+      text-align: center;
+      font-size: 1.2rem;
+      background: #f8f9fa;
+      transition: background 0.3s;
+      margin-bottom: 1.5rem;
+    }
+
+    .dropzone.highlight {
+      background: #e0f7fa;
+    }
+
+    #filepicker {
+      margin: 1rem 0;
+    }
+
+    #progress-container {
+      display: none;
+      margin: 1rem 0;
+    }
+
+    #progress-bar {
+      height: 20px;
+      background-color: #42a5f5;
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    #results {
+      margin-top: 2rem;
+    }
+
+    ul, ol {
+      padding-left: 1.2rem;
+    }
+
+    .info {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeeba;
+      padding: 1rem;
+      margin-bottom: 2rem;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>📷 My Next Prime Lens</h1>
+  <div class="subtitle">Before spending a bunch of money on prime lenses, let's analyze your phone photos to discover your most used focal length!</div>
+
+  <div class="info">
+    <strong>📱 Phone photos only:</strong> This tool analyzes JPEG and HEIC images taken with your smartphone. DSLR and mirrorless camera photos are ignored.
+  </div>
+
+  <div class="dropzone" id="dropzone">📂 <strong>Drag & drop up to 300 JPG or HEIC images here</strong></div>
+
+  <label for="filepicker">Or tap to select images:</label><br>
+  <input type="file" id="filepicker" accept=".jpg,.jpeg,.heic,.heif" multiple>
+
+  <div id="progress-container">
+    <div id="progress-bar"></div>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    const dropzone = document.getElementById('dropzone');
+    const filepicker = document.getElementById('filepicker');
+    const results = document.getElementById('results');
+    const progressContainer = document.getElementById('progress-container');
+    const progressBar = document.getElementById('progress-bar');
+    const MAX_FILES = 300;
+
+    let focalLengths = {};
+
+    function reset() {
+      focalLengths = {};
+      results.innerHTML = '';
+      progressBar.style.width = '0%';
+      progressContainer.style.display = 'block';
+    }
+
+    function filterExifImages(files) {
+      const validTypes = ['image/jpeg', 'image/heic', 'image/heif'];
+      const valid = files.filter(f => validTypes.includes(f.type));
+      const skipped = files.length - valid.length;
+
+      if (valid.length === 0) {
+        results.innerHTML = `<p style="color: red;">⚠️ None of the selected files are valid JPG or HEIC images with EXIF data.</p>`;
+      } else if (skipped > 0) {
+        results.innerHTML = `<p style="color: orange;">⚠️ ${skipped} non-supported file(s) were skipped (e.g., PNG, GIF, video).</p>`;
+      }
+
+      return valid;
+    }
+
+    async function handleFiles(files) {
+      reset();
+      if (files.length > MAX_FILES) {
+        results.innerHTML += `<p style="color: red;">⚠️ You selected ${files.length} photos. Please limit to ${MAX_FILES} for best performance.</p>`;
+        files = files.slice(0, MAX_FILES);
+      }
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          const exif = await exifr.parse(file, ['FocalLength', 'FocalLengthIn35mmFilm', 'Make', 'Model']);
+          if (!exif || (!exif.FocalLength && !exif.FocalLengthIn35mmFilm)) continue;
+
+          const camera = `${exif.Make || ''} ${exif.Model || ''}`.toLowerCase();
+          const isRealCamera = /nikon|canon|fujifilm|sony|leica|olympus|panasonic|pentax|sigma|ricoh|phase one|hasselblad/.test(camera);
+          if (isRealCamera) continue;
+
+          let fl = null;
+          if (exif.FocalLengthIn35mmFilm) {
+            fl = exif.FocalLengthIn35mmFilm;
+          } else if (exif.FocalLength) {
+            fl = Math.round(exif.FocalLength * 6.1);
+          }
+
+          if (fl) {
+            focalLengths[fl] = (focalLengths[fl] || 0) + 1;
+          }
+        } catch (err) {
+          console.warn(`Error reading ${file.name}:`, err);
+        }
+
+        progressBar.style.width = `${Math.round((i + 1) / files.length * 100)}%`;
+      }
+
+      showResults();
+    }
+
+    function showResults() {
+      const sorted = Object.entries(focalLengths)
+        .map(([f, count]) => ({ focal: parseInt(f), count }))
+        .sort((a, b) => a.focal - b.focal);
+
+      const top = [...sorted].sort((a, b) => b.count - a.count).slice(0, 3);
+
+      results.innerHTML += `
+        <h2>📊 Most Common Focal Lengths (35mm equivalent — phone photos only)</h2>
+        <ul>
+          ${sorted.map(d => `<li>${d.focal}mm – ${d.count} photos</li>`).join('')}
+        </ul>
+        <h2>🎯 Recommended Prime Lenses</h2>
+        <ol>
+          ${top.map(d => `<li>${d.focal}mm — You took ${d.count} photos</li>`).join('')}
+        </ol>
+        <p>💡 Consider a prime lens close to one of these focal lengths — it likely fits how you already shoot!</p>
+      `;
+    }
+
+    dropzone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropzone.classList.add('highlight');
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('highlight');
+    });
+
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('highlight');
+      const files = filterExifImages(Array.from(e.dataTransfer.files));
+      if (files.length > 0) handleFiles(files);
+    });
+
+    filepicker.addEventListener('change', e => {
+      const files = filterExifImages(Array.from(e.target.files));
+      if (files.length > 0) handleFiles(files);
+    });
+  </script>
+</body>
+  <footer style="margin-top: 3rem; text-align: center; font-size: 0.9rem; color: #888;">
+    Created by <a href="https://github.com/mkpt" target="_blank" style="color: #888; text-decoration: underline;">mkpt</a>
+  </footer>
+</html>
